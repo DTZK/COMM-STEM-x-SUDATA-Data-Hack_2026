@@ -15,7 +15,7 @@ import plotly.express as px
 import pandas as pd
 from datetime import datetime, timezone
 
-API_BASE = "http://localhost:8000"
+API_BASE = "https://comm-stem-x-sudata-data-hack-2026.onrender.com/"
 
 # ─────────────────────────────────────────────
 # Page config
