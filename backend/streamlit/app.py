@@ -347,7 +347,8 @@ with st.sidebar:
         "Publish Day of Week",
         options=list(range(7)),
         format_func=lambda i: dow_labels[i],
-        index=now_utc.weekday(),
+        # index=now_utc.weekday()
+        index=0,
     )
 
     days_to_trend = st.number_input(
