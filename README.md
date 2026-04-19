@@ -6,7 +6,7 @@
 ---
 
 ## 🔴 Live Demo
-👉 [trendscore.streamlit.app](https://your-app-name.streamlit.app)
+👉 [trendscore.streamlit.app](https://comm-stem-x-sudata-data-hack2026-7dc5axbm4dnf2hcpp9z9a9.streamlit.app/)
 
 ---
 
