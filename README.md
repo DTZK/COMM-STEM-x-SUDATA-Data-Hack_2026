@@ -1,3 +1,6 @@
+# How to run
+https://comm-stem-x-sudata-data-hack2026-7dc5axbm4dnf2hcpp9z9a9.streamlit.app/
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
