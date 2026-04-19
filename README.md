@@ -1,76 +1,120 @@
-# How to run
-https://comm-stem-x-sudata-data-hack2026-7dc5axbm4dnf2hcpp9z9a9.streamlit.app/
+# TrendScore — YouTube Trend Worthiness Score
+> COMM-STEM × SUDATA Data Hack 2026
 
-# React + TypeScript + Vite
+**TrendScore** helps YouTube creators and agencies decide whether to jump on a trend — and exactly when to publish — using pre-publish signals and machine learning.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+---
 
-Currently, two official plugins are available:
+## 🔴 Live Demo
+👉 [trendscore.streamlit.app](https://your-app-name.streamlit.app)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## The Problem
+Creators have no tool that tells them *when* to jump on a trend — only that a trend exists. TrendScore fills that gap by predicting whether a YouTube trend is worth a creator's production time based on signals available *before* publishing.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## How It Works
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Data
+- **Dataset:** US YouTube Trending (16,400 rows, Feb 2026 snapshot)
+- **After cleaning:** 15,894 usable rows (dropped sub-1,000 view videos, capped engagement ratios, removed nulls)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Features Engineered
+| Feature | Type | What it captures |
+|---|---|---|
+| `days_to_trend` | Derived | Velocity — how fast the video hit trending |
+| `like_rate` | Derived | Engagement quality (capped at 20%) |
+| `comment_rate` | Derived | Discussion depth (capped at 5%) |
+| `has_tags` | Derived | Tagging strategy (binary) |
+| `tag_count` | Derived | Number of tags used |
+| `publish_hour` | Derived | Upload timing strategy |
+| `publish_dow` | Derived | Day of week uploaded |
+| `category_id` | Raw | Content niche |
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### ML Pipeline
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+**Stage 1 — K-Means Clustering (5 Archetypes)**
+| Archetype | Avg days to trend | Like rate | Worth joining % |
+|---|---|---|---|
+| ⚡ Flash Viral | 12 days | 11% | 0% |
+| 🚀 Fast Mover | 203 days | 3% | 30% |
+| 🔥 Mid-Burn Trending | 314 days | 11% | 18% |
+| 📈 Sustained Grower | 415 days | 3% | 37% |
+| 🌿 Legacy Evergreen | 4,555 days | 1% | 67% |
+
+**Stage 2 — HistGradientBoostingClassifier**
+| Metric | Value |
+|---|---|
+| Test AUC | 0.872 |
+| CV AUC | 0.874 ± 0.006 |
+| Accuracy | 84% |
+
+Top feature: `days_to_trend` (importance: 0.203)
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Liveness check |
+| GET | `/categories` | YouTube category list |
+| POST | `/predict` | Score a single trend |
+| POST | `/score-csv` | Batch score an uploaded CSV |
+
+---
+
+## Project Structure
+
+```
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   └── score.py          # Scoring engine
+│   ├── models/               # Trained pkl files
+│   ├── streamlit/
+│   │   └── app.py            # Streamlit dashboard
+│   ├── main.py               # FastAPI app
+│   └── requirements.txt
+├── src/                      # React/TypeScript frontend
+└── README.md
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Running Locally
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+**Backend**
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
+
+**Streamlit**
+```bash
+cd backend
+streamlit run streamlit/app.py
+```
+
+**React Frontend**
+```bash
+npm install
+npm run dev
+```
+
+---
+
+## Tech Stack
+- **ML:** scikit-learn (KMeans + HistGradientBoostingClassifier)
+- **Backend:** FastAPI + uvicorn
+- **Frontend:** Streamlit + Plotly
+- **React UI:** Vite + TypeScript
+- **Deployment:** Render (API) + Streamlit Community Cloud
+
+---
+
+## Team
+> COMM-STEM × SUDATA Data Hack 2026
