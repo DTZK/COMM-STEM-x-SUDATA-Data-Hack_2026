@@ -8,12 +8,18 @@ Endpoints:
     GET  /health        — liveness check
     GET  /categories    — list of YouTube category id + name pairs
     POST /predict       — returns archetype, score, timing, recommendation
+    POST /score-csv     — score every row in an uploaded CSV file
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from app.score import score_trend
+
+import io
+import numpy as np
+import pandas as pd
 
 app = FastAPI(
     title="Trend Worthiness Score API",
@@ -57,6 +63,57 @@ CATEGORIES = {
     28: "Science & Technology",
     29: "Nonprofits & Activism",
 }
+
+# ─────────────────────────────────────────────
+# Required CSV columns
+# ─────────────────────────────────────────────
+ 
+REQUIRED_COLUMNS = {
+    "title", "category_id", "views", "likes",
+    "comments", "publish_time", "trending_date", "tags"
+}
+ 
+# ─────────────────────────────────────────────
+# Feature engineering 
+# ─────────────────────────────────────────────
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    # Parse dates
+    df["publish_time"] = pd.to_datetime(df["publish_time"], utc=True, errors="coerce")
+
+    # trending_date format is YY.DD.MM 
+    df["trending_date_parsed"] = pd.to_datetime(
+        df["trending_date"].astype(str).str.replace(
+            r"(\d+)\.(\d+)\.(\d+)", r"20\1-\3-\2", regex=True
+        ),
+        utc=True,
+        errors="coerce",
+    )
+
+    # Drop sub-1000 view noise
+    df = df[df["views"] >= 1000].copy()
+
+    # Velocity
+    df["days_to_trend"] = (
+        df["trending_date_parsed"] - df["publish_time"]
+    ).dt.days.clip(lower=0)
+
+    # Engagement ratios
+    df["like_rate"]    = (df["likes"] / df["views"]).clip(upper=0.20)
+    df["comment_rate"] = (df["comments"] / df["views"]).clip(upper=0.05)
+
+    # Tag features
+    df["has_tags"]  = (df["tags"] != "[none]").astype(int)
+    df["tag_count"] = df["tags"].apply(
+        lambda x: len(str(x).split("|")) if x != "[none]" else 0
+    )
+
+    # Publish timing
+    df["publish_hour"] = df["publish_time"].dt.hour
+    df["publish_dow"]  = df["publish_time"].dt.dayofweek
+
+    return df
 
 # ─────────────────────────────────────────────
 # Request / Response schemas
@@ -115,3 +172,85 @@ def predict(body: PredictRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return result
+
+@app.post("/score-csv")
+async def score_csv(file: UploadFile = File(...)):
+    """
+    Upload a CSV with YouTube trending data.
+    Returns scored results as a downloadable CSV.
+ 
+    Required columns:
+        title, category_id, views, likes, comments,
+        publish_time, trending_date, tags
+    """
+
+    #Read upload
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are supported.")
+    
+    contents = await file.read()
+    try:
+        df = pd.read_csv(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
+    
+    #Validate columns
+    missing = REQUIRED_COLUMNS - set(df.columns)
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required columns: {sorted(missing)}"
+        )
+    
+    #Feature Engineering
+    try:
+        df = engineer_features(df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Feature engineering failed: {e}")
+ 
+    if df.empty:
+        raise HTTPException(
+            status_code=422,
+            detail="No valid rows remaining after cleaning (all videos had < 1000 views or unparseable dates)."
+        )
+    
+    #Score every row
+    results = []
+    for _, row in df.iterrows():
+        try:
+            scored = score_trend({
+                "category_id":   int(row["category_id"]),
+                "days_to_trend": float(row["days_to_trend"]),
+                "like_rate":     float(row["like_rate"]),
+                "comment_rate":  float(row["comment_rate"]),
+                "tag_count":     int(row["tag_count"]),
+                "publish_hour":  int(row["publish_hour"]),
+                "publish_dow":   int(row["publish_dow"]),
+            })
+            results.append({
+                "title":          row.get("title", ""),
+                "category":       CATEGORIES.get(int(row["category_id"]), str(row["category_id"])),
+                "days_to_trend":  int(row["days_to_trend"]),
+                "archetype":      scored["archetype"],
+                "confidence":     f"{scored['confidence']}/100",
+                "timing":         scored["timing"],
+                "recommendation": scored["recommendation"],
+            })
+        except Exception:
+            # Skip rows that fail scoring individually
+            continue
+
+    if not results:
+        raise HTTPException(status_code=500, detail="No rows could be scored.")
+    
+    #Return as downloadable CSV
+    output_df = pd.DataFrame(results)
+    csv_buf = io.StringIO()
+    output_df.to_csv(csv_buf, index=False)
+    csv_buf.seek(0)
+
+    return StreamingResponse(
+    iter([csv_buf.getvalue()]),
+    media_type="text/csv",
+    headers={"Content-Disposition": "attachment; filename=trend_scores.csv"},
+    )
