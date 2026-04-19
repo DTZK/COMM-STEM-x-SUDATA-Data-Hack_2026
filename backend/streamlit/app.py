@@ -4,7 +4,7 @@ YouTube Trend Worthiness Dashboard
 Run from the backend/streamlit/ directory:
     streamlit run app.py
 
-Requires the FastAPI backend running at http://localhost:8000:
+Requires the FastAPI backend running at API BASE:
     cd ../  &&  uvicorn main:app --reload --port 8000
 """
 
@@ -15,7 +15,7 @@ import plotly.express as px
 import pandas as pd
 from datetime import datetime, timezone
 
-API_BASE = "https://comm-stem-x-sudata-data-hack-2026.onrender.com/"
+API_BASE = "https://comm-stem-x-sudata-data-hack-2026.onrender.com"
 
 # ─────────────────────────────────────────────
 # Page config
@@ -190,7 +190,7 @@ def call_predict(payload: dict) -> dict | None:
         r.raise_for_status()
         return r.json()
     except requests.exceptions.ConnectionError:
-        st.error("Cannot reach the API at http://localhost:8000 — is the FastAPI server running?")
+        st.error("Cannot reach the API — is the backend running?")
     except requests.exceptions.HTTPError as e:
         st.error(f"API error {e.response.status_code}: {e.response.text}")
     except Exception as e:
